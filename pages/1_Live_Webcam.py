@@ -1,16 +1,15 @@
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import tensorflow as tf
+import numpy as np
 import cv2
 import mediapipe as mp
-import numpy as np
-import tensorflow as tf
 from twilio.rest import Client
-import os
 
 st.set_page_config(page_title="Live Webcam", layout="centered")
 st.title("📷 Live Mask Detection")
 
-# Load TFLite model
+# Load model
 interpreter = tf.lite.Interpreter(model_path="mask_detection_model.tflite")
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
@@ -51,26 +50,20 @@ class VideoProcessor(VideoProcessorBase):
 
                 idx = np.argmax(output_data)
                 label = label_map[idx]
-
                 color = (0, 255, 0) if idx == 1 else ((0, 255, 255) if idx == 0 else (0, 0, 255))
+
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
         return frame.from_ndarray(img, format="bgr24")
 
-# Load Twilio credentials from Streamlit secrets
-account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
-auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
-client = Client(account_sid, auth_token)
+# 🔐 Twilio TURN credentials
+client = Client(st.secrets["TWILIO_ACCOUNT_SID"], st.secrets["TWILIO_AUTH_TOKEN"])
 token = client.tokens.create()
 
-# Extract ICE server config
-ice_servers = token.ice_servers
-
-# Streamer setup with Twilio-based TURN/STUN
 webrtc_streamer(
     key="live-mask-detect",
     video_processor_factory=VideoProcessor,
-    frontend_rtc_configuration={"iceServers": ice_servers},
-    server_rtc_configuration={"iceServers": ice_servers}
+    frontend_rtc_configuration={"iceServers": token.ice_servers},
+    server_rtc_configuration={"iceServers": token.ice_servers},
 )
