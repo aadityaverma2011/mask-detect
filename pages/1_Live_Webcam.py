@@ -1,15 +1,14 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import tensorflow as tf
-import numpy as np
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
 import cv2
 import mediapipe as mp
-from twilio.rest import Client
+import numpy as np
+import tensorflow as tf
 
 st.set_page_config(page_title="Live Webcam", layout="centered")
 st.title("📷 Live Mask Detection")
 
-# Load model
+# Load TFLite model
 interpreter = tf.lite.Interpreter(model_path="mask_detection_model.tflite")
 interpreter.allocate_tensors()
 input_details = interpreter.get_input_details()
@@ -24,8 +23,8 @@ label_map = {
 mp_face = mp.solutions.face_detection
 face_detector = mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.6)
 
-class VideoProcessor(VideoProcessorBase):
-    def recv(self, frame):
+class VideoProcessor(VideoTransformerBase):
+    def transform(self, frame):
         img = frame.to_ndarray(format="bgr24")
         rgb_frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = face_detector.process(rgb_frame)
@@ -50,20 +49,11 @@ class VideoProcessor(VideoProcessorBase):
 
                 idx = np.argmax(output_data)
                 label = label_map[idx]
-                color = (0, 255, 0) if idx == 1 else ((0, 255, 255) if idx == 0 else (0, 0, 255))
 
+                color = (0, 255, 0) if idx == 1 else ((0, 255, 255) if idx == 0 else (0, 0, 255))
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-        return frame.from_ndarray(img, format="bgr24")
+        return img
 
-# 🔐 Twilio TURN credentials
-client = Client(st.secrets["TWILIO_ACCOUNT_SID"], st.secrets["TWILIO_AUTH_TOKEN"])
-token = client.tokens.create()
-
-webrtc_streamer(
-    key="live-mask-detect",
-    video_processor_factory=VideoProcessor,
-    frontend_rtc_configuration={"iceServers": token.ice_servers},
-    server_rtc_configuration={"iceServers": token.ice_servers},
-)
+webrtc_streamer(key="live-mask-detect", video_processor_factory=VideoProcessor)
