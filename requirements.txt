@@ -1,4 +1,4 @@
-tflite-runtime
+tensorflow-cpu==2.13.0
 streamlit
 opencv-python
 mediapipe
