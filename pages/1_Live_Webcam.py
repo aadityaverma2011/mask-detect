@@ -60,7 +60,17 @@ class VideoProcessor(VideoTransformerBase):
 webrtc_streamer(
     key="live-mask-detect",
     video_processor_factory=VideoProcessor,
-    rtc_configuration={
+    frontend_rtc_configuration={
+        "iceServers": [
+            {"urls": "stun:stun.l.google.com:19302"},
+            {
+                "urls": "turn:openrelay.metered.ca:80",
+                "username": "openai",
+                "credential": "chatgpt"
+            }
+        ]
+    },
+    server_rtc_configuration={
         "iceServers": [
             {"urls": "stun:stun.l.google.com:19302"},
             {
@@ -71,3 +81,4 @@ webrtc_streamer(
         ]
     }
 )
+
