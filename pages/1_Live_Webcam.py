@@ -1,9 +1,11 @@
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import cv2
 import mediapipe as mp
 import numpy as np
 import tensorflow as tf
+from twilio.rest import Client
+import os
 
 st.set_page_config(page_title="Live Webcam", layout="centered")
 st.title("📷 Live Mask Detection")
@@ -23,8 +25,8 @@ label_map = {
 mp_face = mp.solutions.face_detection
 face_detector = mp_face.FaceDetection(model_selection=0, min_detection_confidence=0.6)
 
-class VideoProcessor(VideoTransformerBase):
-    def transform(self, frame):
+class VideoProcessor(VideoProcessorBase):
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         rgb_frame = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = face_detector.process(rgb_frame)
@@ -54,31 +56,21 @@ class VideoProcessor(VideoTransformerBase):
                 cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
-        return img
+        return frame.from_ndarray(img, format="bgr24")
 
-# ✅ Add TURN/STUN config here for deployed environment
+# Load Twilio credentials from Streamlit secrets
+account_sid = st.secrets["TWILIO_ACCOUNT_SID"]
+auth_token = st.secrets["TWILIO_AUTH_TOKEN"]
+client = Client(account_sid, auth_token)
+token = client.tokens.create()
+
+# Extract ICE server config
+ice_servers = token.ice_servers
+
+# Streamer setup with Twilio-based TURN/STUN
 webrtc_streamer(
     key="live-mask-detect",
     video_processor_factory=VideoProcessor,
-    frontend_rtc_configuration={
-        "iceServers": [
-            {"urls": "stun:stun.l.google.com:19302"},
-            {
-                "urls": "turn:openrelay.metered.ca:80",
-                "username": "openai",
-                "credential": "chatgpt"
-            }
-        ]
-    },
-    server_rtc_configuration={
-        "iceServers": [
-            {"urls": "stun:stun.l.google.com:19302"},
-            {
-                "urls": "turn:openrelay.metered.ca:80",
-                "username": "openai",
-                "credential": "chatgpt"
-            }
-        ]
-    }
+    frontend_rtc_configuration={"iceServers": ice_servers},
+    server_rtc_configuration={"iceServers": ice_servers}
 )
-
