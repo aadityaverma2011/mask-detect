@@ -1,7 +1,6 @@
+tflite-runtime
 streamlit
-tensorflow
 opencv-python
-streamlit-webrtc
-pillow
-numpy
 mediapipe
+numpy
+Pillow
