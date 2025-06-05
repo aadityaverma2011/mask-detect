@@ -4,8 +4,12 @@ import numpy as np
 import tensorflow as tf
 import cv2
 
-# Load model
-model = tf.keras.models.load_model("mask_detection_model.h5")
+# Load TFLite model
+interpreter = tf.lite.Interpreter(model_path="mask_detection_model.tflite")
+interpreter.allocate_tensors()
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
 
 # Labels
 label_map = {
@@ -39,10 +43,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-
-
-
-
 st.markdown("<h1 style='text-align:center;'>Mask Detection System</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align:center;'>Upload a face image to check mask usage and biometric access.</p>", unsafe_allow_html=True)
 st.markdown("---")
@@ -50,58 +50,62 @@ st.markdown("---")
 uploaded_file = st.file_uploader("Upload a face image", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
-        image = Image.open(uploaded_file).convert("RGB")
-        img_array = np.array(image)
-        (h, w) = img_array.shape[:2]
+    image = Image.open(uploaded_file).convert("RGB")
+    img_array = np.array(image)
+    (h, w) = img_array.shape[:2]
 
-        # Face detection
-        blob = cv2.dnn.blobFromImage(img_array, 1.0, (300, 300), (104.0, 177.0, 123.0))
-        face_net.setInput(blob)
-        detections = face_net.forward()
+    # Face detection
+    blob = cv2.dnn.blobFromImage(img_array, 1.0, (300, 300), (104.0, 177.0, 123.0))
+    face_net.setInput(blob)
+    detections = face_net.forward()
 
-        face_found = False
-        for i in range(detections.shape[2]):
-            confidence = detections[0, 0, i, 2]
-            if confidence > 0.5:
-                face_found = True
-                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
-                (x1, y1, x2, y2) = box.astype("int")
-                face_crop = img_array[y1:y2, x1:x2]
+    face_found = False
+    for i in range(detections.shape[2]):
+        confidence = detections[0, 0, i, 2]
+        if confidence > 0.5:
+            face_found = True
+            box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+            (x1, y1, x2, y2) = box.astype("int")
+            face_crop = img_array[y1:y2, x1:x2]
 
-                # Preprocess
-                face = cv2.resize(face_crop, (128, 128)) / 255.0
-                face = np.expand_dims(face, axis=0)
+            # Preprocess
+            face = cv2.resize(face_crop, (128, 128)) / 255.0
+            face = np.expand_dims(face.astype(np.float32), axis=0)
 
-                # Predict
-                pred = model.predict(face)
-                label_index = np.argmax(pred)
-                label = label_map[label_index]
-                confidence = float(np.max(pred))
+            # TFLite prediction
+            interpreter.set_tensor(input_details[0]['index'], face)
+            interpreter.invoke()
+            output_data = interpreter.get_tensor(output_details[0]['index'])
 
-                # Log
-                print(f"Prediction: {pred}")
-                print(f"Index: {label_index} — Label: {label} — Confidence: {confidence:.4f}")
+            label_index = np.argmax(output_data)
+            label = label_map[label_index]
+            confidence = float(np.max(output_data))
 
-                # Display in columns
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.image(image, caption="Original Uploaded Image", use_container_width=True)
-                with col2:
-                    st.image(Image.fromarray(face_crop), caption="Detected Face", use_container_width=True)
+            # Log
+            print(f"Prediction: {output_data}")
+            print(f"Index: {label_index} — Label: {label} — Confidence: {confidence:.4f}")
 
-                # Output result
-                if label_index == 1:
-                    st.success("Biometrics Authorized")
-                    st.markdown(f"<div class='result-box' style='background-color:#e8f5e9;'>{label}</div>", unsafe_allow_html=True)
-                elif label_index == 0:
-                    st.warning("Biometrics Authorized — Please wear your mask correctly")
-                    st.markdown(f"<div class='result-box' style='background-color:#fff8e1;'>{label}</div>", unsafe_allow_html=True)
-                else:
-                    st.error("Biometrics Not Authorized")
-                    st.markdown(f"<div class='result-box' style='background-color:#ffebee;'>{label}</div>", unsafe_allow_html=True)
-                break
+            # Display in columns
+            col1, col2 = st.columns(2)
+            with col1:
+                st.image(image, caption="Original Uploaded Image", use_container_width=True)
+            with col2:
+                st.image(Image.fromarray(face_crop), caption="Detected Face", use_container_width=True)
 
-        if not face_found:
-            st.error("No face detected with sufficient confidence.")
+            # Output result
+            if label_index == 1:
+                st.success("Biometrics Authorized")
+                st.markdown(f"<div class='result-box' style='background-color:#e8f5e9;'>{label}</div>", unsafe_allow_html=True)
+            elif label_index == 0:
+                st.warning("Biometrics Authorized — Please wear your mask correctly")
+                st.markdown(f"<div class='result-box' style='background-color:#fff8e1;'>{label}</div>", unsafe_allow_html=True)
+            else:
+                st.error("Biometrics Not Authorized")
+                st.markdown(f"<div class='result-box' style='background-color:#ffebee;'>{label}</div>", unsafe_allow_html=True)
+            break
+
+    if not face_found:
+        st.error("No face detected with sufficient confidence.")
+
 
 

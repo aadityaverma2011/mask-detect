@@ -9,7 +9,12 @@ st.set_page_config(page_title="Live Webcam", layout="centered")
 st.markdown("<h1 style='text-align:center;'>Live Mask Detection</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-model = tf.keras.models.load_model("mask_detection_model.h5")
+# Load TFLite model
+interpreter = tf.lite.Interpreter(model_path="mask_detection_model.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
 label_map = {
     0: "Mask Worn Incorrectly",
     1: "Mask Worn Correctly",
@@ -46,9 +51,15 @@ while run and cap and cap.isOpened():
             if face_crop.size == 0:
                 continue
 
-            resized = cv2.resize(face_crop, (128, 128)) / 255.0
-            pred = model.predict(np.expand_dims(resized, axis=0))
-            idx = np.argmax(pred)
+            resized = cv2.resize(face_crop, (128, 128)).astype(np.float32) / 255.0
+            input_tensor = np.expand_dims(resized, axis=0)
+
+            # Run inference
+            interpreter.set_tensor(input_details[0]['index'], input_tensor)
+            interpreter.invoke()
+            output_data = interpreter.get_tensor(output_details[0]['index'])
+
+            idx = np.argmax(output_data)
             label = label_map[idx]
 
             color = (0, 255, 0) if idx == 1 else ((0, 255, 255) if idx == 0 else (0, 0, 255))
